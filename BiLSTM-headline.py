@@ -8,6 +8,8 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
+from datetime import datetime
+import os
 
 # Suppress TensorFlow info logs
 import os
@@ -99,21 +101,52 @@ history = model.fit(
 
 # Evaluation
 def plot_training(history):
-    plt.figure(figsize=(12, 4))
+    plt.figure(figsize=(10, 4))  # Adjusted figure size
     
+    # Remove space between subplots
+    plt.subplots_adjust(wspace=0)  # No horizontal space between plots
+    
+    plot_dir = "plots"
+    os.makedirs(plot_dir, exist_ok=True)
+    
+    # Generate timestamp for unique filenames
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"training_curves_{timestamp}.png"
+    save_path = os.path.join(plot_dir, filename)
+    
+    # Accuracy plot (left)
     plt.subplot(1, 2, 1)
     plt.plot(history.history['accuracy'], label='Train')
     plt.plot(history.history['val_accuracy'], label='Validation')
-    plt.title('Accuracy')
+    plt.title('Accuracy', pad=20)  # Add padding to title
+    plt.ylabel('Accuracy')
     plt.legend()
     
+    # Remove right spine for left plot
+    plt.gca().spines['right'].set_visible(False)
+    
+    # Loss plot (right)
     plt.subplot(1, 2, 2)
     plt.plot(history.history['loss'], label='Train')
     plt.plot(history.history['val_loss'], label='Validation')
-    plt.title('Loss')
+    plt.title('Loss', pad=20)  # Add padding to title
+    plt.ylabel('Loss')
     plt.legend()
     
+    # Remove left spine for right plot
+    plt.gca().spines['left'].set_visible(False)
+    
+    # Align y-axis labels
+    plt.gca().yaxis.set_label_position("right")
+    plt.gca().yaxis.tick_right()
+    
+    # Save and display
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
+    plt.close()
+    
+
 
 plot_training(history)
 
