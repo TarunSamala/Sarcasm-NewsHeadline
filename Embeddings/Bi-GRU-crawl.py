@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.get_logger().setLevel('ERROR')
 
-# Load and preprocess data
+# Load and preprocess data (unchanged)
 def load_data(file_path):
     with open(file_path, 'r') as f:
         datastore = [json.loads(line) for line in f]
@@ -31,7 +31,7 @@ def load_data(file_path):
     df['clean_headline'] = df['headline'].apply(clean_text)
     return df
 
-# Load FastText embeddings
+# Load FastText embeddings (unchanged)
 def load_fasttext(filepath):
     embeddings_index = {}
     with open(filepath, encoding='utf-8') as f:
@@ -42,14 +42,13 @@ def load_fasttext(filepath):
             embeddings_index[word] = coefs
     return embeddings_index
 
-# Parameters
+# Parameters (unchanged)
 MAX_LENGTH = 30
-FASTTEXT_DIM = 300  # Updated for FastText dimension
+FASTTEXT_DIM = 300
 BATCH_SIZE = 256
 EPOCHS = 20
-GLOVE_DIM = 100
 
-# Load and prepare data
+# Load and prepare data (unchanged)
 df = load_data('../Sarcasm_Headlines_Dataset_v2.json')
 X_train, X_test, y_train, y_test = train_test_split(
     df['clean_headline'], 
@@ -58,17 +57,17 @@ X_train, X_test, y_train, y_test = train_test_split(
     random_state=42
 )
 
-# Tokenization
+# Tokenization (unchanged)
 tokenizer = Tokenizer(oov_token='<OOV>')
 tokenizer.fit_on_texts(X_train)
 VOCAB_SIZE = len(tokenizer.word_index) + 1
 
-# Load FastText embeddings
+# Load FastText embeddings (unchanged)
 print("Loading FastText embeddings...")
 fasttext_embeddings = load_fasttext('../../crawl-300d-2M.vec')
 print(f"Loaded {len(fasttext_embeddings)} word vectors")
 
-# Create embedding matrix
+# Create embedding matrix (unchanged)
 embedding_matrix = np.zeros((VOCAB_SIZE, FASTTEXT_DIM))
 found = 0
 for word, i in tokenizer.word_index.items():
@@ -79,61 +78,61 @@ for word, i in tokenizer.word_index.items():
             found += 1
 print(f"Embedding coverage: {found/VOCAB_SIZE:.2%}")
 
-# Sequence padding
+# Sequence padding (unchanged)
 train_sequences = tokenizer.texts_to_sequences(X_train)
 test_sequences = tokenizer.texts_to_sequences(X_test)
 train_padded = pad_sequences(train_sequences, maxlen=MAX_LENGTH, padding='post')
 test_padded = pad_sequences(test_sequences, maxlen=MAX_LENGTH, padding='post')
 
-# Model architecture updated for FastText
+# Modified model architecture for Bi-GRU
 model = tf.keras.Sequential([
     tf.keras.layers.Embedding(
         input_dim=VOCAB_SIZE,
-        output_dim=GLOVE_DIM,
+        output_dim=FASTTEXT_DIM,
         weights=[embedding_matrix],
         input_length=MAX_LENGTH,
         trainable=False
     ),
     tf.keras.layers.SpatialDropout1D(0.3),
     tf.keras.layers.Bidirectional(tf.keras.layers.GRU(
-        96,  # Increased units for GRU
+        128,
         return_sequences=True,
-        recurrent_dropout=0.25,
+        recurrent_dropout=0.2,
         kernel_regularizer=tf.keras.regularizers.l2(0.001)
     )),
     tf.keras.layers.Bidirectional(tf.keras.layers.GRU(
         64,
-        recurrent_dropout=0.25,
-        kernel_regularizer=tf.keras.regularizers.l2(0.001)
-    )),
-    tf.keras.layers.Dense(96, activation='relu',
-                         kernel_regularizer=tf.keras.regularizers.l2(0.001)),
-    tf.keras.layers.Dropout(0.35),
+        recurrent_dropout=0.2,
+        kernel_regularizer=tf.keras.regularizers.l2(0.001))
+    ),
+    tf.keras.layers.Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)),
+    tf.keras.layers.Dropout(0.4),
     tf.keras.layers.Dense(1, activation='sigmoid')
 ])
 
+# Compile (unchanged)
 model.compile(
     loss='binary_crossentropy',
-    optimizer=tf.keras.optimizers.Adam(0.0003),  # Reduced learning rate
+    optimizer=tf.keras.optimizers.Adam(0.0003),
     metrics=['accuracy']
 )
 
-# Enhanced callbacks
+# Callbacks (unchanged)
 early_stop = tf.keras.callbacks.EarlyStopping(
     monitor='val_accuracy',
-    patience=7,  # Increased patience
+    patience=7,
     min_delta=0.002,
     restore_best_weights=True
 )
 
 lr_scheduler = tf.keras.callbacks.ReduceLROnPlateau(
     monitor='val_loss',
-    factor=0.3,  # More conservative reduction
+    factor=0.3,
     patience=3,
     min_lr=1e-6
 )
 
-# Training
+# Training (unchanged)
 history = model.fit(
     train_padded,
     y_train,
@@ -143,11 +142,10 @@ history = model.fit(
     callbacks=[early_stop, lr_scheduler]
 )
 
-# Enhanced visualization
+# Visualization (unchanged)
 def plot_training(history):
     plt.figure(figsize=(14, 6))
     
-    # Accuracy plot
     plt.subplot(1, 2, 1)
     plt.plot(history.history['accuracy'], label='Train', linewidth=2)
     plt.plot(history.history['val_accuracy'], label='Validation', linewidth=2)
@@ -158,7 +156,6 @@ def plot_training(history):
     plt.grid(linestyle='--', alpha=0.6)
     plt.legend()
     
-    # Loss plot
     plt.subplot(1, 2, 2)
     plt.plot(history.history['loss'], label='Train', linewidth=2)
     plt.plot(history.history['val_loss'], label='Validation', linewidth=2)
@@ -171,12 +168,11 @@ def plot_training(history):
     
     plt.tight_layout()
     
-    # Save plot with improved naming
     plot_dir = "training_plots"
     os.makedirs(plot_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     plt.savefig(
-        f"{plot_dir}/fasttext_training_GRU_{timestamp}.png",
+        f"{plot_dir}/bigru_training_{timestamp}.png",
         dpi=300,
         bbox_inches='tight'
     )
@@ -184,7 +180,7 @@ def plot_training(history):
 
 plot_training(history)
 
-# Enhanced evaluation
+# Evaluation (unchanged)
 y_pred = (model.predict(test_padded) > 0.5).astype(int)
 print("\nClassification Report:")
 print(classification_report(y_test, y_pred))
