@@ -4,12 +4,13 @@ import numpy as np
 import tensorflow as tf
 import re
 import os
-from datetime import datetime
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix
-import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import regularizers
+from tensorflow.keras.layers import SpatialDropout1D, LSTM, Bidirectional, Dense, Input
+from tensorflow.keras.models import Model
+from tensorflow.keras.initializers import Constant
+from tensorflow.keras.regularizers import l2
 
 # Suppress TensorFlow logs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -85,70 +86,88 @@ train_padded = pad_sequences(train_sequences, maxlen=MAX_LENGTH, padding='post')
 test_padded = pad_sequences(test_sequences, maxlen=MAX_LENGTH, padding='post')
 
 # Model architecture updated for FastText
-model = tf.keras.Sequential([
-    tf.keras.layers.Embedding(
+def build_optimized_model():
+    inputs = Input(shape=(MAX_LEN,))
+    
+    # Embedding layer with regularization
+    x = Embedding(
         input_dim=VOCAB_SIZE,
-        output_dim=FASTTEXT_DIM,
-        weights=[embedding_matrix],
-        input_length=MAX_LENGTH,
-        trainable=False
-    ),
-    tf.keras.layers.SpatialDropout1D(0.3),
-    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(
-        128,  # Increased units for higher dimensionality
+        output_dim=EMBEDDING_DIM,
+        embeddings_initializer=Constant(embedding_matrix),
+        trainable=False,
+        mask_zero=True
+    )(inputs)
+    
+    # Spatial dropout for sequence data
+    x = SpatialDropout1D(0.3)(x)
+    
+    # First BiLSTM layer with regularization
+    x = Bidirectional(LSTM(
+        128,
         return_sequences=True,
         recurrent_dropout=0.2,
-        kernel_regularizer=tf.keras.regularizers.l2(0.001)
-    )),
-    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(
-        64,  # Increased units
-        recurrent_dropout=0.2,
-        kernel_regularizer=tf.keras.regularizers.l2(0.001))
-    ),
-    tf.keras.layers.Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)),
-    tf.keras.layers.Dropout(0.4),
-    tf.keras.layers.Dense(1, activation='sigmoid')
-])
-
-model.compile(
-    loss='binary_crossentropy',
-    optimizer=tf.keras.optimizers.Adam(0.0003),  # Reduced learning rate
-    metrics=['accuracy']
-)
+        kernel_regularizer=l2(0.001),
+        merge_mode='concat'
+    )(x)
+    
+    # Attention layer with regularization
+    x = AttentionLayer()(x)
+    x = Dropout(0.4)(x)
+    
+    # Second dense layer with regularization
+    x = Dense(128, activation='relu', kernel_regularizer=l2(0.001))(x)
+    x = Dropout(0.3)(x)
+    
+    outputs = Dense(1, activation='sigmoid')(x)
+    
+    model = Model(inputs=inputs, outputs=outputs)
+    
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(0.0003),  # Lower learning rate
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+    return model
 
 # Enhanced callbacks
-early_stop = tf.keras.callbacks.EarlyStopping(
-    monitor='val_accuracy',
-    patience=7,  # Increased patience
-    min_delta=0.002,
-    restore_best_weights=True
-)
+callbacks = [
+    EarlyStopping(
+        monitor='val_accuracy',
+        patience=7,
+        min_delta=0.002,
+        restore_best_weights=True
+    ),
+    ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.3,
+        patience=3,
+        min_lr=1e-6
+    ),
+    ModelCheckpoint(
+        'best_model.h5',
+        save_best_only=True,
+        monitor='val_accuracy'
+    )
+]
 
-lr_scheduler = tf.keras.callbacks.ReduceLROnPlateau(
-    monitor='val_loss',
-    factor=0.3,  # More conservative reduction
-    patience=3,
-    min_lr=1e-6
-)
-
-# Training
+# Training with full validation set
 history = model.fit(
-    train_padded,
-    y_train,
+    X_train, train_labels,
+    validation_data=(X_test, test_labels),  # Use explicit validation data
     epochs=EPOCHS,
-    validation_data=(test_padded, y_test),
     batch_size=BATCH_SIZE,
-    callbacks=[early_stop, lr_scheduler]
+    callbacks=callbacks,
+    verbose=1
 )
 
-# Enhanced visualization
-def plot_training(history):
+# Enhanced plotting function
+def plot_enhanced_training(history):
     plt.figure(figsize=(14, 6))
     
-    # Accuracy plot
+    # Accuracy plot with improved styling
     plt.subplot(1, 2, 1)
-    plt.plot(history.history['accuracy'], label='Train', linewidth=2)
-    plt.plot(history.history['val_accuracy'], label='Validation', linewidth=2)
+    plt.plot(history.history['accuracy'], label='Train', linewidth=2, color='#1f77b4')
+    plt.plot(history.history['val_accuracy'], label='Validation', linewidth=2, color='#ff7f0e')
     plt.title('Training vs Validation Accuracy', fontsize=14)
     plt.ylabel('Accuracy', fontsize=12)
     plt.xlabel('Epoch', fontsize=12)
@@ -156,10 +175,10 @@ def plot_training(history):
     plt.grid(linestyle='--', alpha=0.6)
     plt.legend()
     
-    # Loss plot
+    # Loss plot with improved styling
     plt.subplot(1, 2, 2)
-    plt.plot(history.history['loss'], label='Train', linewidth=2)
-    plt.plot(history.history['val_loss'], label='Validation', linewidth=2)
+    plt.plot(history.history['loss'], label='Train', linewidth=2, color='#1f77b4')
+    plt.plot(history.history['val_loss'], label='Validation', linewidth=2, color='#ff7f0e')
     plt.title('Training vs Validation Loss', fontsize=14)
     plt.ylabel('Loss', fontsize=12)
     plt.xlabel('Epoch', fontsize=12)
@@ -168,23 +187,5 @@ def plot_training(history):
     plt.legend()
     
     plt.tight_layout()
-    
-    # Save plot with improved naming
-    plot_dir = "training_plots"
-    os.makedirs(plot_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    plt.savefig(
-        f"{plot_dir}/fasttext_training_{timestamp}.png",
-        dpi=300,
-        bbox_inches='tight'
-    )
+    plt.savefig('training_curves.png', dpi=300)
     plt.close()
-
-plot_training(history)
-
-# Enhanced evaluation
-y_pred = (model.predict(test_padded) > 0.5).astype(int)
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred))
-print("\nConfusion Matrix:")
-print(confusion_matrix(y_test, y_pred))

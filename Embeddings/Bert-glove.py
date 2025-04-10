@@ -2,149 +2,133 @@ import json
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.layers import Embedding, LSTM, Dense
-from tensorflow.keras.models import Sequential
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-from transformers import BertTokenizer, TFBertForSequenceClassification
+from sklearn.metrics import classification_report, confusion_matrix
 import re
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tensorflow.keras.layers import TextVectorization
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, Bidirectional, LSTM, Dense, Dropout, Conv1D, GlobalMaxPooling1D
 
-# Function to load and preprocess data
-def load_data(file_path):
-    """Load JSONL data and clean the text."""
-    with open(file_path, 'r') as f:
-        datastore = [json.loads(line) for line in f]
-    df = pd.DataFrame(datastore)
-    df = df[['is_sarcastic', 'headline']]
-    # Clean text: lowercase and remove non-alphabetic characters
-    def clean_text(text):
-        text = text.lower()
-        text = re.sub(r'[^a-zA-Z\s]', '', text)
-        return text.strip()
-    df['clean_headline'] = df['headline'].apply(clean_text)
-    return df['clean_headline'].tolist(), df['is_sarcastic'].tolist()
+# Suppress warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# Load data with fallback to sample dataset
-try:
-    texts, labels = load_data('../Sarcasm_Headlines_Dataset_v2.json')
-    print("Dataset loaded successfully.")
-except FileNotFoundError:
-    print("Dataset not found. Using sample data.")
-    texts = [
-        "I love this movie",
-        "This film is terrible",
-        "What a fantastic day",
-        "This is the worst experience ever",
-        "Absolutely wonderful",
-        "I hate it here"
-    ]
-    labels = [1, 0, 1, 0, 1, 0]
-labels = np.array(labels)
-
-# --- GloVe with LSTM ---
-
-# Hyperparameters
-VOCAB_SIZE = 15000
-MAX_LENGTH = 40
-EMBEDDING_DIM = 100
-
-# Tokenize and pad sequences
-tokenizer = Tokenizer(num_words=VOCAB_SIZE)
-tokenizer.fit_on_texts(texts)
-sequences = tokenizer.texts_to_sequences(texts)
-X = pad_sequences(sequences, maxlen=MAX_LENGTH)
-
-# Function to load GloVe embeddings
-def load_glove_embeddings(glove_file_path):
-    """Load GloVe embeddings from file into a dictionary."""
-    embeddings = {}
-    with open(glove_file_path, 'r', encoding='utf-8') as f:
+# --- GloVe Implementation ---
+def load_glove_embeddings(glove_path):
+    embeddings_index = {}
+    with open(glove_path, encoding='utf8') as f:
         for line in f:
             values = line.split()
             word = values[0]
-            vector = np.array(values[1:], dtype='float32')
-            embeddings[word] = vector
-    return embeddings
+            coefs = np.asarray(values[1:], dtype='float32')
+            embeddings_index[word] = coefs
+    return embeddings_index
 
-# Load GloVe embeddings and create embedding matrix
-glove_embeddings = load_glove_embeddings('../../glove.6B.100d.txt')
-word_index = tokenizer.word_index
-embedding_matrix = np.zeros((VOCAB_SIZE, EMBEDDING_DIM))
-for word, i in word_index.items():
-    if i < VOCAB_SIZE:
-        embedding_vector = glove_embeddings.get(word)
+def create_glove_model(vocab_size, embedding_dim, max_length, embeddings_index):
+    model = Sequential([
+        Embedding(
+            input_dim=vocab_size,
+            output_dim=embedding_dim,
+            input_length=max_length,
+            weights=[embeddings_matrix],
+            trainable=False
+        ),
+        Bidirectional(LSTM(128, return_sequences=True)),
+        Dropout(0.5),
+        Conv1D(64, 5, activation='relu'),
+        GlobalMaxPooling1D(),
+        Dense(64, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01)),
+        Dropout(0.3),
+        Dense(1, activation='sigmoid')
+    ])
+    
+    return model
+
+# --- Data Processing ---
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    return text.strip()
+
+def load_data(file_path):
+    with open(file_path, 'r') as f:
+        datastore = [json.loads(line) for line in f]
+    
+    df = pd.DataFrame(datastore)
+    df = df[['is_sarcastic', 'headline']]
+    df['clean_text'] = df['headline'].apply(clean_text)
+    return df
+
+# --- Main Function ---
+def main():
+    # Parameters
+    MAX_LENGTH = 64
+    BATCH_SIZE = 256
+    EMBEDDING_DIM = 100
+    EPOCHS = 15
+    
+    # Load data
+    df = load_data('Sarcasm_Headlines_Dataset_v2.json')
+    X = df['clean_text'].values
+    y = df['is_sarcastic'].values
+    
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Text Vectorization
+    vectorizer = TextVectorization(
+        max_tokens=20000,
+        output_sequence_length=MAX_LENGTH,
+        standardize='lower_and_strip_punctuation'
+    )
+    vectorizer.adapt(X_train)
+    
+    # Load GloVe embeddings
+    embeddings_index = load_glove_embeddings('glove.6B.100d.txt')
+    
+    # Create embedding matrix
+    vocab = vectorizer.get_vocabulary()
+    embeddings_matrix = np.zeros((len(vocab), EMBEDDING_DIM))
+    for i, word in enumerate(vocab):
+        embedding_vector = embeddings_index.get(word)
         if embedding_vector is not None:
-            embedding_matrix[i] = embedding_vector
+            embeddings_matrix[i] = embedding_vector
+    
+    # Create model
+    model = create_glove_model(
+        vocab_size=len(vocab),
+        embedding_dim=EMBEDDING_DIM,
+        max_length=MAX_LENGTH,
+        embeddings_matrix=embeddings_matrix
+    )
+    
+    # Compile
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+    
+    # Convert text to sequences
+    X_train_vec = vectorizer(X_train).numpy()
+    X_test_vec = vectorizer(X_test).numpy()
+    
+    # Train
+    history = model.fit(
+        X_train_vec, y_train,
+        validation_data=(X_test_vec, y_test),
+        epochs=EPOCHS,
+        batch_size=BATCH_SIZE,
+        callbacks=[
+            tf.keras.callbacks.EarlyStopping(patience=3),
+            tf.keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=2)
+        ]
+    )
+    
+    # Visualization and evaluation (same as BERT version)
+    # ... [Use same visualization code as previous example]
 
-# Build and compile the GloVe + LSTM model
-model_glove = Sequential([
-    Embedding(VOCAB_SIZE, EMBEDDING_DIM, weights=[embedding_matrix], input_length=MAX_LENGTH, trainable=False),
-    LSTM(64),
-    Dense(1, activation='sigmoid')
-])
-model_glove.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-
-# Split data for GloVe + LSTM
-X_train, X_test, y_train, y_test = train_test_split(X, labels, test_size=0.2, random_state=42)
-
-# Train the GloVe + LSTM model
-print("Training GloVe + LSTM model...")
-model_glove.fit(X_train, y_train, epochs=5, validation_data=(X_test, y_test))
-
-# --- BERT ---
-
-# Split texts and labels for BERT
-train_texts, test_texts, train_labels, test_labels = train_test_split(texts, labels, test_size=0.2, random_state=42)
-
-# Tokenize with BERT tokenizer
-tokenizer_bert = BertTokenizer.from_pretrained('bert-base-uncased')
-train_encodings = tokenizer_bert(train_texts, truncation=True, padding=True, max_length=128, return_tensors='tf')
-test_encodings = tokenizer_bert(test_texts, truncation=True, padding=True, max_length=128, return_tensors='tf')
-
-# Create TensorFlow datasets
-train_dataset = tf.data.Dataset.from_tensor_slices((
-    dict(train_encodings),
-    train_labels
-)).shuffle(100).batch(16)
-
-test_dataset = tf.data.Dataset.from_tensor_slices((
-    dict(test_encodings),
-    test_labels
-)).batch(16)
-
-# Load and compile BERT model
-model_bert = TFBertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
-model_bert.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=2e-5),
-                   loss='sparse_categorical_crossentropy',
-                   metrics=['accuracy'])
-
-# Train the BERT model
-print("Training BERT model...")
-model_bert.fit(train_dataset, epochs=3, validation_data=test_dataset)
-
-# --- Evaluation ---
-
-# Evaluate GloVe + LSTM
-loss_glove, acc_glove = model_glove.evaluate(X_test, y_test)
-print(f"GloVe + LSTM Accuracy: {acc_glove:.4f}")
-
-# Evaluate BERT
-loss_bert, acc_bert = model_bert.evaluate(test_dataset)
-print(f"BERT Accuracy: {acc_bert:.4f}")
-
-# --- Ensemble Predictions ---
-
-# Get predictions from GloVe + LSTM
-pred_glove = model_glove.predict(X_test).flatten()
-
-# Get predictions from BERT
-pred_bert = model_bert.predict(test_dataset).logits
-pred_bert_probs = tf.nn.softmax(pred_bert, axis=1)[:, 1].numpy()
-
-# Ensemble by averaging probabilities
-ensemble_pred = (pred_glove + pred_bert_probs) / 2
-ensemble_labels = (ensemble_pred > 0.5).astype(int)
-ensemble_acc = accuracy_score(y_test, ensemble_labels)
-print(f"Ensemble Accuracy: {ensemble_acc:.4f}")
+if __name__ == "__main__":
+    main()
