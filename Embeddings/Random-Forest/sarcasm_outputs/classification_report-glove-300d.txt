@@ -1,0 +1,9 @@
+Random Forest with GloVe 840B Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.74      0.84      0.79      2997
+           1       0.79      0.68      0.73      2727
+
+    accuracy                           0.77      5724
+   macro avg       0.77      0.76      0.76      5724
+weighted avg       0.77      0.77      0.76      5724
