@@ -1,0 +1,9 @@
+GloVe 840B Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.80      0.92      0.85      2997
+           1       0.89      0.74      0.81      2727
+
+    accuracy                           0.84      5724
+   macro avg       0.85      0.83      0.83      5724
+weighted avg       0.84      0.84      0.83      5724
