@@ -1,0 +1,9 @@
+Bi-GRU with GloVe 100D Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.91      0.82      0.86      2997
+           1       0.82      0.92      0.87      2727
+
+    accuracy                           0.87      5724
+   macro avg       0.87      0.87      0.87      5724
+weighted avg       0.87      0.87      0.87      5724
