@@ -1,0 +1,9 @@
+Bi-GRU with Crawl 300D Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.89      0.90      0.89      2997
+           1       0.88      0.88      0.88      2727
+
+    accuracy                           0.89      5724
+   macro avg       0.89      0.89      0.89      5724
+weighted avg       0.89      0.89      0.89      5724

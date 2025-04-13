@@ -5,7 +5,7 @@ import tensorflow as tf
 import re
 import os
 from tensorflow.keras import regularizers
-from tensorflow.keras.layers import Input, Embedding, Bidirectional, LSTM, Dense, Dropout, SpatialDropout1D
+from tensorflow.keras.layers import Input, Embedding, Bidirectional, GRU, Dense, Dropout, SpatialDropout1D
 from tensorflow.keras.models import Model
 from tensorflow.keras.initializers import Constant
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
@@ -20,7 +20,7 @@ from sklearn.utils.class_weight import compute_class_weight
 # Configuration
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 MAX_LEN = 60
-VOCAB_SIZE = 25000
+VOCAB_SIZE = 30000
 EMBEDDING_DIM = 300
 BATCH_SIZE = 128
 EPOCHS = 30
@@ -66,19 +66,19 @@ tokenizer.fit_on_texts(X_train)
 X_train_seq = pad_sequences(tokenizer.texts_to_sequences(X_train), maxlen=MAX_LEN, padding='post')
 X_test_seq = pad_sequences(tokenizer.texts_to_sequences(X_test), maxlen=MAX_LEN, padding='post')
 
-# Load FastText embeddings
-def load_fasttext(file_path):
-    embeddings = {}
+# Load FastText crawl embeddings
+def load_crawl(file_path):
+    embeddings_index = {}
     with open(file_path, encoding='utf-8') as f:
         for line in f:
             values = line.rstrip().split()
             word = values[0]
             vector = np.asarray(values[1:], dtype='float32')
-            embeddings[word] = vector
-    return embeddings
+            embeddings_index[word] = vector
+    return embeddings_index
 
-print("Loading FastText embeddings...")
-crawl_embeddings = load_fasttext(CRAWL_PATH)
+print("Loading Crawl embeddings...")
+crawl_embeddings = load_crawl(CRAWL_PATH)
 
 # Create embedding matrix
 embedding_matrix = np.zeros((VOCAB_SIZE, EMBEDDING_DIM))
@@ -86,27 +86,27 @@ for word, i in tokenizer.word_index.items():
     if i < VOCAB_SIZE and word in crawl_embeddings:
         embedding_matrix[i] = crawl_embeddings[word]
 
-# Optimized Bi-LSTM Model
-def build_bilstm_model():
+# Enhanced Bi-GRU Model
+def build_bigru_model():
     inputs = Input(shape=(MAX_LEN,))
     
     x = Embedding(VOCAB_SIZE, EMBEDDING_DIM,
                 embeddings_initializer=Constant(embedding_matrix),
                 mask_zero=True,
-                trainable=False)(inputs)
+                trainable=True)(inputs)
     
-    x = SpatialDropout1D(0.5)(x)
+    x = SpatialDropout1D(0.6)(x)
     
-    x = Bidirectional(LSTM(128,
-                         kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4),
-                         recurrent_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4),
-                         return_sequences=True))(x)
+    x = Bidirectional(GRU(128,
+                        kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=2e-4),
+                        recurrent_regularizer=regularizers.l1_l2(l1=1e-5, l2=2e-4),
+                        return_sequences=True))(x)
     
-    x = Bidirectional(LSTM(64,
-                         kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4)))(x)
+    x = Bidirectional(GRU(64,
+                        kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=2e-4)))(x)
     
     x = Dense(128, activation='relu',
-             kernel_regularizer=regularizers.l2(1e-4))(x)
+             kernel_regularizer=regularizers.l2(2e-4))(x)
     x = Dropout(0.7)(x)
     outputs = Dense(1, activation='sigmoid')(x)
     
@@ -134,7 +134,7 @@ class_weights = compute_class_weight('balanced',
 class_weights = {i:w for i,w in enumerate(class_weights)}
 
 # Training
-model = build_bilstm_model()
+model = build_bigru_model()
 history = model.fit(
     X_train_seq, y_train,
     validation_data=(X_test_seq, y_test),
@@ -150,20 +150,21 @@ plt.figure(figsize=(12, 4))
 plt.subplot(1, 2, 1)
 plt.plot(history.history['accuracy'], label='Train')
 plt.plot(history.history['val_accuracy'], label='Validation')
-plt.title('Bi-LSTM Accuracy Curves (FastText)', fontsize=12)
+plt.title('Bi-GRU Accuracy Curves (Crawl 300D)', fontsize=12)
 plt.ylabel('Accuracy')
 plt.xlabel('Epoch')
+plt.ylim(0.5, 1.0)
 plt.legend()
 
 plt.subplot(1, 2, 2)
 plt.plot(history.history['loss'], label='Train')
 plt.plot(history.history['val_loss'], label='Validation')
-plt.title('Bi-LSTM Loss Curves (FastText)', fontsize=12)
+plt.title('Bi-GRU Loss Curves (Crawl 300D)', fontsize=12)
 plt.ylabel('Loss')
 plt.xlabel('Epoch')
 plt.legend()
 
-plt.savefig(os.path.join(OUTPUT_DIR, 'training_curves-bilstm-crawl-300d.png'), bbox_inches='tight', dpi=300)
+plt.savefig(os.path.join(OUTPUT_DIR, 'training_curves-bigru-crawl-300d.png'), bbox_inches='tight', dpi=300)
 plt.close()
 
 # Generate predictions
@@ -171,8 +172,8 @@ y_pred = (model.predict(X_test_seq) > 0.5).astype(int).flatten()
 
 # Save classification report
 report = classification_report(y_test, y_pred)
-with open(os.path.join(OUTPUT_DIR, 'classification_report-bilstm-crawl-300d.txt'), 'w') as f:
-    f.write("Bi-LSTM with FastText Classification Report:\n")
+with open(os.path.join(OUTPUT_DIR, 'classification_report-bigru-crawl-300d.txt'), 'w') as f:
+    f.write("Bi-GRU with Crawl 300D Classification Report:\n")
     f.write(report)
 
 # Save confusion matrix
@@ -181,10 +182,10 @@ cm = confusion_matrix(y_test, y_pred)
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
             xticklabels=['Non-Sarcastic', 'Sarcastic'],
             yticklabels=['Non-Sarcastic', 'Sarcastic'])
-plt.title('Bi-LSTM Confusion Matrix (FastText)', fontsize=12)
+plt.title('Bi-GRU Confusion Matrix (Crawl 300D)', fontsize=12)
 plt.ylabel('True Label')
 plt.xlabel('Predicted Label')
-plt.savefig(os.path.join(OUTPUT_DIR, 'confusion_matrix-bilstm-crawl-300d.png'), bbox_inches='tight', dpi=300)
+plt.savefig(os.path.join(OUTPUT_DIR, 'confusion_matrix-bigru-crawl-300d.png'), bbox_inches='tight', dpi=300)
 plt.close()
 
 print("\nAll results saved to:", os.path.abspath(OUTPUT_DIR))
