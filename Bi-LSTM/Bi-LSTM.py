@@ -25,7 +25,7 @@ def clean_text(text):
     text = re.sub(r'\s+', ' ', text).strip()  # Normalize whitespace
     return text
 
-# Load and preprocess data
+# Load and preprocess data  Joys~burger and Daniel2588 - > joys burger daniel2588
 def load_data(file_path):
     with open(file_path, 'r') as f:
         datastore = [json.loads(line) for line in f]

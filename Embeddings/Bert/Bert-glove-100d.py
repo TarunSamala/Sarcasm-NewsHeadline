@@ -36,13 +36,13 @@ def load_data(file_path):
 
 # Parameters
 MAX_LENGTH = 40
-BATCH_SIZE = 16  # Reduced to address memory issues
-EPOCHS = 4
+BATCH_SIZE = 16
+EPOCHS = 5
 
 # Main execution
 if __name__ == "__main__":
     # Load and split data
-    df = load_data('../Dataset/Sarcasm_Headlines_Dataset_v2.json')
+    df = load_data('../../Dataset/Sarcasm_Headlines_Dataset_v2.json')
     X_train, X_test, y_train, y_test = train_test_split(
         df['clean_headline'],
         df['is_sarcastic'],
@@ -92,9 +92,9 @@ if __name__ == "__main__":
     )).batch(BATCH_SIZE)
 
     # Build and compile DistilBERT model with AdamW optimizer
-    config = DistilBertConfig.from_pretrained('distilbert-base-uncased', num_labels=1,droput=0.2)
+    config = DistilBertConfig.from_pretrained('distilbert-base-uncased', num_labels=1, dropout=0.2)
     model = TFDistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', config=config)
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=2e-5, weight_decay=0.02)
+    optimizer = tf.keras.optimizers.AdamW(learning_rate=2e-5, weight_decay=0.05)
     loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
