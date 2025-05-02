@@ -11,21 +11,19 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from transformers import DistilBertTokenizer, TFDistilBertForSequenceClassification, DistilBertConfig
 
-# Suppress TensorFlow info logs
+# Suppress TensorFlow logs
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 tf.get_logger().setLevel('ERROR')
 
 # Create output directory
 os.makedirs('sarcasm_outputs', exist_ok=True)
 
-# Text cleaning function
 def clean_text(text):
     text = str(text).lower()
-    text = re.sub(r'[^a-zA-Z\s]', '', text)  # Remove special characters
-    text = re.sub(r'\s+', ' ', text).strip()  # Normalize whitespace
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-# Load and preprocess data
 def load_data(file_path):
     with open(file_path, 'r') as f:
         datastore = [json.loads(line) for line in f]
@@ -34,12 +32,10 @@ def load_data(file_path):
     df['clean_headline'] = df['headline'].apply(clean_text)
     return df
 
-# Parameters
 MAX_LENGTH = 40
-BATCH_SIZE = 16  # Reduced to address memory issues
+BATCH_SIZE = 16
 EPOCHS = 4
 
-# Main execution
 if __name__ == "__main__":
     # Load and split data
     df = load_data('../Dataset/Sarcasm_Headlines_Dataset_v2.json')
@@ -47,80 +43,104 @@ if __name__ == "__main__":
         df['clean_headline'],
         df['is_sarcastic'],
         test_size=0.2,
-        random_state=42
+        random_state=42,
+        stratify=df['is_sarcastic']  # Added stratification
     )
 
-    # Compute class weights based on training data
+    # Class weights with smoothing
     classes = np.unique(y_train)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train)
+    class_weights = np.clip(class_weights, 0.5, 2)  # Limit extreme weights
     class_weights_dict = dict(zip(classes, class_weights))
     sample_weights = np.array([class_weights_dict[label] for label in y_train])
 
-    # Tokenize data using DistilBERT tokenizer
+    # Tokenization with dynamic padding
     tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
     train_encodings = tokenizer(
         X_train.tolist(),
         truncation=True,
-        padding='max_length',
+        padding=True,  # Changed to dynamic padding
         max_length=MAX_LENGTH,
         return_tensors='tf'
     )
     test_encodings = tokenizer(
         X_test.tolist(),
         truncation=True,
-        padding='max_length',
+        padding=True,
         max_length=MAX_LENGTH,
         return_tensors='tf'
     )
 
-    # Prepare TensorFlow datasets
+    # Optimized dataset preparation
     train_dataset = tf.data.Dataset.from_tensor_slices((
-        {
-            'input_ids': train_encodings['input_ids'],
-            'attention_mask': train_encodings['attention_mask']
-        },
+        {'input_ids': train_encodings['input_ids'], 
+         'attention_mask': train_encodings['attention_mask']},
         y_train,
         sample_weights
-    )).shuffle(1000).batch(BATCH_SIZE)
+    )).shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
     test_dataset = tf.data.Dataset.from_tensor_slices((
-        {
-            'input_ids': test_encodings['input_ids'],
-            'attention_mask': test_encodings['attention_mask']
-        },
+        {'input_ids': test_encodings['input_ids'],
+         'attention_mask': test_encodings['attention_mask']},
         y_test
-    )).batch(BATCH_SIZE)
+    )).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
-    # Build and compile DistilBERT model with AdamW optimizer
-    config = DistilBertConfig.from_pretrained('distilbert-base-uncased', num_labels=1,droput=0.2)
+    # Enhanced model configuration
+    config = DistilBertConfig.from_pretrained(
+        'distilbert-base-uncased',
+        num_labels=1,
+        dropout=0.4,  # Increased dropout
+        seq_classif_dropout=0.5,  # Additional dropout for classification
+        attention_dropout=0.2  # Added attention dropout
+    )
+    
     model = TFDistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', config=config)
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=2e-5, weight_decay=0.02)
+    
+    # Enhanced regularization
+    l2_reg = tf.keras.regularizers.l2(0.02)  # Increased L2 regularization
+    model.classifier = tf.keras.Sequential([
+        tf.keras.layers.Dropout(0.4),  # Additional dropout layer
+        tf.keras.layers.Dense(
+            units=1,
+            activation=None,
+            kernel_initializer=model.classifier.kernel_initializer,
+            kernel_regularizer=l2_reg
+        )
+    ])
+
+    # Optimized learning schedule
+    optimizer = tf.keras.optimizers.AdamW(
+        learning_rate=1e-5,  # Reduced learning rate
+        weight_decay=0.03,  # Increased weight decay
+        clipnorm=1.0  # Gradient clipping
+    )
     loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
-    # Define callbacks
+    # Enhanced callbacks
     early_stop = tf.keras.callbacks.EarlyStopping(
-        monitor='val_accuracy',
-        patience=3,
-        min_delta=0.001,
+        monitor='val_loss',  # Changed to monitor loss
+        patience=2,
+        min_delta=0.005,
         restore_best_weights=True
     )
     lr_scheduler = tf.keras.callbacks.ReduceLROnPlateau(
         monitor='val_loss',
         factor=0.5,
-        patience=2,
+        patience=1,
         min_lr=1e-6
     )
 
-    # Train the model
+    # Training with validation frequency
     history = model.fit(
         train_dataset,
         epochs=EPOCHS,
         validation_data=test_dataset,
-        callbacks=[early_stop, lr_scheduler]
+        callbacks=[early_stop, lr_scheduler],
+        verbose=1
     )
 
-    # Function to save training curves
+    # Visualization and reporting (unchanged)
     def save_training_curves(history):
         plt.figure(figsize=(12, 4))
         plt.subplot(1, 2, 1)
@@ -142,18 +162,15 @@ if __name__ == "__main__":
 
     save_training_curves(history)
 
-    # Generate predictions
     logits = model.predict(test_dataset).logits
     probabilities = tf.sigmoid(logits).numpy().flatten()
     y_pred = (probabilities > 0.5).astype(int)
 
-    # Save classification report
     report = classification_report(y_test, y_pred)
     with open(os.path.join('sarcasm_outputs', 'classification_report.txt'), 'w') as f:
         f.write("Classification Report:\n")
         f.write(report)
 
-    # Save confusion matrix
     plt.figure(figsize=(8, 6))
     cm = confusion_matrix(y_test, y_pred)
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
