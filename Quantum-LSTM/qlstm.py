@@ -136,7 +136,7 @@ if __name__ == "__main__":
         f.write(report)
 
     cm = confusion_matrix(y_test, y_pred)
-    sns.heatmap(cm, annot=True, fmt="d",
+    sns.heatmap(cm, annot=True, fmt="d", cmap='Blues',
                 xticklabels=["Non-Sarcastic", "Sarcastic"],
                 yticklabels=["Non-Sarcastic", "Sarcastic"])
     plt.title("Confusion Matrix")
