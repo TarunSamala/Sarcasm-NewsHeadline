@@ -173,12 +173,17 @@ if __name__ == "__main__":
 
     plt.figure(figsize=(8, 6))
     cm = confusion_matrix(y_test, y_pred)
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=['Non-Sarcastic', 'Sarcastic'],
-                yticklabels=['Non-Sarcastic', 'Sarcastic'])
-    plt.title('Confusion Matrix')
-    plt.ylabel('True Label')
-    plt.xlabel('Predicted Label')
+    sns.heatmap(
+        cm, annot=True, fmt='d', cmap='Blues',
+        xticklabels=['Non-Sarcastic', 'Sarcastic'],
+        yticklabels=['Non-Sarcastic', 'Sarcastic'],
+        annot_kws={"size": 22} 
+    )
+    plt.title('Confusion Matrix', fontsize=16)
+    plt.ylabel('True Label', fontsize=14)
+    plt.xlabel('Predicted Label', fontsize=14)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
     plt.savefig(os.path.join('sarcasm_outputs', 'confusion_matrix.png'), bbox_inches='tight')
     plt.close()
 

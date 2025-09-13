@@ -153,13 +153,18 @@ with open(report_path, 'w') as f:
 # Save confusion matrix
 plt.figure(figsize=(8, 6))
 cm = confusion_matrix(y_test, y_pred)
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-            xticklabels=['Not Sarcastic', 'Sarcastic'],
-            yticklabels=['Not Sarcastic', 'Sarcastic'])
-plt.title('Confusion Matrix')
-plt.ylabel('True Label')
-plt.xlabel('Predicted Label')
-plt.savefig(os.path.join(OUTPUT_DIR, 'confusion_matrix.png'), dpi=300, bbox_inches='tight')
+sns.heatmap(
+    cm, annot=True, fmt='d', cmap='Blues',
+    xticklabels=['Non-Sarcastic', 'Sarcastic'],
+    yticklabels=['Non-Sarcastic', 'Sarcastic'],
+    annot_kws={"size": 22} 
+)
+plt.title('Confusion Matrix', fontsize=16)
+plt.ylabel('True Label', fontsize=14)
+plt.xlabel('Predicted Label', fontsize=14)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
+plt.savefig(os.path.join('Sarcasm_outputs', 'confusion_matrix.png'), bbox_inches='tight')
 plt.close()
 
 print(f"\nAll outputs saved to: {os.path.abspath(OUTPUT_DIR)}")
