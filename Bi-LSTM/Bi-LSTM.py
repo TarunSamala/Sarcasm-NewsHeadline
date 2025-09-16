@@ -159,11 +159,11 @@ if __name__ == "__main__":
         yticklabels=['Non-Sarcastic', 'Sarcastic'],
         annot_kws={"size": 22} 
     )
-    plt.title('Confusion Matrix', fontsize=16)
-    plt.ylabel('True Label', fontsize=14)
-    plt.xlabel('Predicted Label', fontsize=14)
-    plt.xticks(fontsize=16)
-    plt.yticks(fontsize=16)
+    plt.title('Confusion Matrix', fontsize=22)
+    plt.ylabel('True Label', fontsize=22)
+    plt.xlabel('Predicted Label', fontsize=22)
+    plt.xticks(fontsize=22)
+    plt.yticks(fontsize=22)
     plt.savefig(os.path.join('sarcasm_outputs', 'confusion_matrix.png'), bbox_inches='tight')
     plt.close()
 

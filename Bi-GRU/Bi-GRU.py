@@ -20,7 +20,7 @@ VOCAB_SIZE = 12000         # Maximum vocabulary size
 EMBEDDING_DIM = 96         # Embedding dimensions (randomly initialized)
 BATCH_SIZE = 128
 EPOCHS = 40
-OUTPUT_DIR = "bigru_arcasm_outputs"
+OUTPUT_DIR = "Sarcasm_outputs"
 DATA_PATH = "../Dataset/Sarcasm_Headlines_Dataset_v2.json"
 
 # Create output directory if not exists
@@ -159,11 +159,11 @@ sns.heatmap(
     yticklabels=['Non-Sarcastic', 'Sarcastic'],
     annot_kws={"size": 22} 
 )
-plt.title('Confusion Matrix', fontsize=16)
-plt.ylabel('True Label', fontsize=14)
-plt.xlabel('Predicted Label', fontsize=14)
-plt.xticks(fontsize=16)
-plt.yticks(fontsize=16)
+plt.title('Confusion Matrix', fontsize=22)
+plt.ylabel('True Label', fontsize=22)
+plt.xlabel('Predicted Label', fontsize=22)
+plt.xticks(fontsize=22)
+plt.yticks(fontsize=22)
 plt.savefig(os.path.join('Sarcasm_outputs', 'confusion_matrix.png'), bbox_inches='tight')
 plt.close()
 
