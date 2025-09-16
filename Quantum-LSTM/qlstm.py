@@ -23,8 +23,9 @@ BATCH_SIZE = 32
 EPOCHS = 10
 QUBITS = 4
 Q_LAYERS = 2
+OUTPUT_DIR = "sarcasm_outputs"
 
-os.makedirs('sarcasm_outputs', exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ===== DATA CLEANING =====
 def clean_text(text):
@@ -141,8 +142,12 @@ if __name__ == "__main__":
                 yticklabels=["Non-Sarcastic", "Sarcastic"],
                 annot_kws={"size": 22})
     
-    plt.title("Confusion Matrix")
-    plt.savefig("sarcasm_outputs/confusion_matrix.png")
+    plt.title("Confusion Matrix",fontsize = 20)
+    plt.xlabel("Predicted Label",fontsize = 20)
+    plt.ylabel("True Label",fontsize = 20)
+    plt.xticks(fontsize = 20)
+    plt.yticks(fontsize = 20)
+    plt.savefig(os.path.join(OUTPUT_DIR, 'confusion_matrix.png'), dpi=300, bbox_inches='tight')
     plt.close()
 
     print("✅ All results saved to 'sarcasm_outputs' folder.")
