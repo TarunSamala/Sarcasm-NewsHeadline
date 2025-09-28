@@ -44,22 +44,22 @@ if __name__ == "__main__":
         df['is_sarcastic'],
         test_size=0.2,
         random_state=42,
-        stratify=df['is_sarcastic']  # Added stratification
+        stratify=df['is_sarcastic']
     )
 
     # Class weights with smoothing
     classes = np.unique(y_train)
     class_weights = compute_class_weight('balanced', classes=classes, y=y_train)
-    class_weights = np.clip(class_weights, 0.5, 2)  # Limit extreme weights
+    class_weights = np.clip(class_weights, 0.5, 2)
     class_weights_dict = dict(zip(classes, class_weights))
     sample_weights = np.array([class_weights_dict[label] for label in y_train])
 
-    # Tokenization with dynamic padding
+    # Tokenization
     tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
     train_encodings = tokenizer(
         X_train.tolist(),
         truncation=True,
-        padding=True,  # Changed to dynamic padding
+        padding=True,
         max_length=MAX_LENGTH,
         return_tensors='tf'
     )
@@ -71,9 +71,9 @@ if __name__ == "__main__":
         return_tensors='tf'
     )
 
-    # Optimized dataset preparation
+    # Dataset prep
     train_dataset = tf.data.Dataset.from_tensor_slices((
-        {'input_ids': train_encodings['input_ids'], 
+        {'input_ids': train_encodings['input_ids'],
          'attention_mask': train_encodings['attention_mask']},
         y_train,
         sample_weights
@@ -85,21 +85,26 @@ if __name__ == "__main__":
         y_test
     )).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
-    # Enhanced model configuration
+    # Model config
     config = DistilBertConfig.from_pretrained(
         'distilbert-base-uncased',
         num_labels=1,
-        dropout=0.4,  # Increased dropout
-        seq_classif_dropout=0.5,  # Additional dropout for classification
-        attention_dropout=0.2  # Added attention dropout
+        dropout=0.4,
+        seq_classif_dropout=0.5,
+        attention_dropout=0.2
     )
-    
-    model = TFDistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', config=config)
-    
-    # Enhanced regularization
-    l2_reg = tf.keras.regularizers.l2(0.02)  # Increased L2 regularization
+
+    # ✅ FIX: force TF weights only (avoid torch.load CVE issue)
+    model = TFDistilBertForSequenceClassification.from_pretrained(
+        'distilbert-base-uncased',
+        config=config,
+        from_pt=False  # make sure no PyTorch checkpoint is loaded
+    )
+
+    # Replace classifier with extra dropout + L2 reg
+    l2_reg = tf.keras.regularizers.l2(0.02)
     model.classifier = tf.keras.Sequential([
-        tf.keras.layers.Dropout(0.4),  # Additional dropout layer
+        tf.keras.layers.Dropout(0.4),
         tf.keras.layers.Dense(
             units=1,
             activation=None,
@@ -108,18 +113,18 @@ if __name__ == "__main__":
         )
     ])
 
-    # Optimized learning schedule
+    # Optimizer + loss
     optimizer = tf.keras.optimizers.AdamW(
-        learning_rate=1e-5,  # Reduced learning rate
-        weight_decay=0.03,  # Increased weight decay
-        clipnorm=1.0  # Gradient clipping
+        learning_rate=1e-5,
+        weight_decay=0.03,
+        clipnorm=1.0
     )
     loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
-    # Enhanced callbacks
+    # Callbacks
     early_stop = tf.keras.callbacks.EarlyStopping(
-        monitor='val_loss',  # Changed to monitor loss
+        monitor='val_loss',
         patience=2,
         min_delta=0.005,
         restore_best_weights=True
@@ -131,7 +136,7 @@ if __name__ == "__main__":
         min_lr=1e-6
     )
 
-    # Training with validation frequency
+    # Train
     history = model.fit(
         train_dataset,
         epochs=EPOCHS,
@@ -140,7 +145,7 @@ if __name__ == "__main__":
         verbose=1
     )
 
-    # Visualization and reporting (unchanged)
+    # Save curves
     def save_training_curves(history):
         plt.figure(figsize=(12, 4))
         plt.subplot(1, 2, 1)
@@ -162,6 +167,7 @@ if __name__ == "__main__":
 
     save_training_curves(history)
 
+    # Predictions
     logits = model.predict(test_dataset).logits
     probabilities = tf.sigmoid(logits).numpy().flatten()
     y_pred = (probabilities > 0.5).astype(int)
@@ -171,19 +177,20 @@ if __name__ == "__main__":
         f.write("Classification Report:\n")
         f.write(report)
 
+    # Confusion matrix
     plt.figure(figsize=(8, 6))
     cm = confusion_matrix(y_test, y_pred)
     sns.heatmap(
         cm, annot=True, fmt='d', cmap='Blues',
         xticklabels=['Non-Sarcastic', 'Sarcastic'],
         yticklabels=['Non-Sarcastic', 'Sarcastic'],
-        annot_kws={"size": 22} 
+        annot_kws={"size": 22}
     )
-    plt.title('Confusion Matrix', fontsize=16)
-    plt.ylabel('True Label', fontsize=14)
-    plt.xlabel('Predicted Label', fontsize=14)
-    plt.xticks(fontsize=16)
-    plt.yticks(fontsize=16)
+    plt.title('Confusion Matrix', fontsize=20)
+    plt.ylabel('True Label', fontsize=20)
+    plt.xlabel('Predicted Label', fontsize=20)
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
     plt.savefig(os.path.join('sarcasm_outputs', 'confusion_matrix.png'), bbox_inches='tight')
     plt.close()
 
